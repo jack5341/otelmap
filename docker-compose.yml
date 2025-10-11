@@ -1,0 +1,63 @@
+version: "3"
+
+services:
+  otelcollector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel
+    command:
+      - "--config=/etc/otel-collector-config.yml"
+      - "--set=service.telemetry.logs.level=INFO"
+    volumes:
+      - ./otel-collector-config.yml:/etc/otel-collector-config.yml
+    ports:
+      - "4317:4317"   # otlp receiver
+      - "4318:4318" # OTLP http receiver
+      - "13133:13133" # health_check extension
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - otel-clickhouse
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    ports:
+      - "9000:9000"
+      - "8123:8123"
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "clickhouse-client --query 'SELECT 1' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    environment:
+      - CLICKHOUSE_DB=default
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=default
+    networks:
+      - otel-clickhouse
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    networks:
+      - otel-clickhouse
+    depends_on:
+      - clickhouse
+    environment:
+      - CLICKHOUSE_DSN=clickhouse://default:default@clickhouse:9000/default?dial_timeout=5s&compress=true
+      - LOG_LEVEL=info
+      - SERVICE_NAME=otel-map-server
+      - SHUTDOWN_TIMEOUT_SECONDS=10
+
+volumes:
+  clickhouse_data:
+
+networks:
+  otel-clickhouse:
+    driver: bridge
+    internal: true

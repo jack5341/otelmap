@@ -1,0 +1,67 @@
+# Environment files (CRITICAL - never commit secrets)
+.env
+.env.*
+production.env
+staging.env
+development.env
+local.env
+
+# Secrets and credentials
+secrets/
+credentials/
+config/secrets/
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.csr
+
+# Logs
+*.log
+logs/
+log/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Build artifacts
+dist/
+build/
+bin/
+out/
+target/
+
+# Dependencies
+vendor/
+node_modules/
+go/pkg/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+.directory
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+
+# Test coverage
+coverage/
+*.cover
+*.out
+
+# Docker volumes
+docker-data/

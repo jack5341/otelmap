@@ -1,0 +1,13 @@
+**/.git
+**/.DS_Store
+**/node_modules
+**/dist
+**/bin
+**/tmp
+**/build
+**/coverage
+**/*.log
+**/.env
+**/.env.*
+**/.idea
+**/.vscode
