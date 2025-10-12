@@ -52,7 +52,7 @@ services:
       - ./sql:/docker-entrypoint-initdb.d
 
   server:
-    image: otelmap.registry.dockreg.com/otelmap-server:latest
+    image: otelmap.registry.dockreg.com/server:latest
     ports:
       - "8000:8000"
     networks:
