@@ -45,11 +45,6 @@ entryPoints:
     address: ":80"
     proxyProtocol:
       insecure: true
-    http:
-      redirections:
-        entrypoint:
-          to: websecure
-          scheme: https
   websecure:
     address: ":443"
     proxyProtocol:
