@@ -1,0 +1,72 @@
+# traefik.yaml
+
+api:
+  insecure: false
+  dashboard: false
+
+log:
+  level: DEBUG
+  format: json
+  filePath: ./traefik.log
+
+accessLog:
+  format: json
+  filePath: /dev/stdout
+
+providers:
+  docker:
+    exposedByDefault: false
+
+metrics:
+  prometheus:
+    entryPoint: metrics
+    addEntryPointsLabels: true
+    addRoutersLabels: true
+    addServicesLabels: true
+    buckets:
+      - 0.005
+      - 0.01
+      - 0.025
+      - 0.05
+      - 0.1
+      - 0.25
+      - 0.5
+      - 1
+      - 2.5
+      - 5
+      - 10
+
+entryPoints:
+  metrics:
+    address: :8082
+  traefik:
+    address: ":8100"
+  web:
+    address: ":80"
+    proxyProtocol:
+      insecure: true
+    http:
+      redirections:
+        entrypoint:
+          to: websecure
+          scheme: https
+  websecure:
+    address: ":443"
+    proxyProtocol:
+      insecure: true
+    http:
+      tls:
+        certResolver: letsencrypt
+        domains:
+          - main: otelmap.com
+            sans:
+              - api.otelmap.com
+              - trace.otelmap.com
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: cert@otelmap.com
+      storage: /letsencrypt/acme.json
+      httpChallenge:
+        entrypoint: web

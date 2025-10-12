@@ -15,7 +15,7 @@ on:
 
 env:
   REGISTRY: otelmap-server.registry.dockreg.com
-  IMAGE_NAME: otelmap-server
+  IMAGE_NAME: otelmap-server/otelmap-server
 
 jobs:
   docker:

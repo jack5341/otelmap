@@ -8,7 +8,7 @@ services:
       - "--config=/etc/otel-collector-config.yml"
       - "--set=service.telemetry.logs.level=INFO"
     volumes:
-      - ./otel-collector-config.yml:/etc/otel-collector-config.yml
+      - ./otel-config.yml:/etc/otel-collector-config.yml
     ports:
       - "4317:4317"   # otlp receiver
       - "4318:4318" # OTLP http receiver
@@ -18,7 +18,13 @@ services:
         condition: service_healthy
     networks:
       - otel-clickhouse
-
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.collector.rule=Host(`trace.otelmap.com`)"
+      - "traefik.http.routers.collector.entrypoints=websecure"
+      - "traefik.http.routers.collector.tls.certresolver=letsencrypt"
+      - "traefik.http.services.collector.loadbalancer.server.port=4318"
   clickhouse:
     image: clickhouse/clickhouse-server:latest
     ports:
@@ -37,7 +43,7 @@ services:
       - otel-clickhouse
     volumes:
       - clickhouse_data:/var/lib/clickhouse
-    
+      
   server:
     build:
       context: .
@@ -46,6 +52,7 @@ services:
       - "8080:8080"
     networks:
       - otel-clickhouse
+      - traefik
     depends_on:
       - clickhouse
     environment:
@@ -53,6 +60,30 @@ services:
       - LOG_LEVEL=info
       - SERVICE_NAME=otel-map-server
       - SHUTDOWN_TIMEOUT_SECONDS=10
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.server.rule=Host(`api.otelmap.com`)"
+      - "traefik.http.routers.server.entrypoints=websecure"
+      - "traefik.http.routers.server.tls.certresolver=letsencrypt"
+      - "traefik.http.services.server.loadbalancer.server.port=8080"
+
+  traefik:
+    image: traefik:v2.9
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      - "--configFile=/traefik.yaml"
+    ports:
+      - 443:443
+      - 80:80
+    networks:
+      - traefik
+    volumes:
+      - ./traefik-config.yml:/traefik.yaml
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - certs:/letsencrypt
+    labels:
+      - "traefik.enable=false"
 
 volumes:
   clickhouse_data:
@@ -61,3 +92,6 @@ networks:
   otel-clickhouse:
     driver: bridge
     internal: true
+  traefik:
+    external: true
+    name: traefik
