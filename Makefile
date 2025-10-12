@@ -12,12 +12,12 @@ build:
 	CGO_ENABLED=0 $(GO) build -o bin/$(APP) ./cmd/server
 
 run:
-	PORT?=8080 CLICKHOUSE_DSN?=clickhouse://default:@localhost:9000/default?dial_timeout=5s\&compress=true \
+	PORT?=8000 CLICKHOUSE_DSN?=clickhouse://default:@localhost:9000/default?dial_timeout=5s\&compress=true \
 	LOG_LEVEL?=info SHUTDOWN_TIMEOUT_SECONDS?=10 \
 		./bin/$(APP)
 
 docker-build:
-	docker build -t project-pompa-server:local .
+	docker build -t otel-map-server:local .
 
 up:
 	docker compose up -d

@@ -2,7 +2,7 @@ version: "3"
 
 services:
   otelcollector:
-    image: otel/opentelemetry-collector-contrib:latest
+    image: otel/opentelemetry-collector-contrib:0.114.0
     container_name: otel
     command:
       - "--config=/etc/otel-collector-config.yml"
@@ -26,46 +26,45 @@ services:
       - "traefik.http.routers.collector.tls.certresolver=letsencrypt"
       - "traefik.http.services.collector.loadbalancer.server.port=4318"
   clickhouse:
-    image: clickhouse/clickhouse-server:latest
+    image: clickhouse/clickhouse-server:25.9
     ports:
       - "9000:9000"
       - "8123:8123"
     healthcheck:
-      test: ["CMD", "bash", "-lc", "clickhouse-client --query 'SELECT 1' || exit 1"]
+      test:
+        ["CMD", "bash", "-lc", "clickhouse-client --query 'SELECT 1' || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 20
-    env_file: 
-        - path: ".env.production"
-          required: true
+    env_file:
+      - path: ".env.production"
+        required: true
     networks:
       - otel-clickhouse
     volumes:
       - clickhouse_data:/var/lib/clickhouse
-      
   server:
     build:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "8000:8000"
     networks:
       - otel-clickhouse
       - traefik
     depends_on:
       - clickhouse
-    env_file: 
-        - path: ".env.production"
-          required: true
+    env_file:
+      - path: ".env.production"
+        required: true
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.server.rule=Host(`api.otelmap.com`)"
       - "traefik.http.routers.server.entrypoints=websecure"
       - "traefik.http.routers.server.tls.certresolver=letsencrypt"
-      - "traefik.http.services.server.loadbalancer.server.port=8080"
-
+      - "traefik.http.services.server.loadbalancer.server.port=8000"
   traefik:
-    image: traefik:v2.9
+    image: traefik:v3.1
     container_name: traefik
     restart: unless-stopped
     command:
@@ -84,6 +83,7 @@ services:
 
 volumes:
   clickhouse_data:
+  certs:
 
 networks:
   otel-clickhouse:

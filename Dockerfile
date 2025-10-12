@@ -15,9 +15,7 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
 FROM gcr.io/distroless/static-debian12:nonroot AS final
 WORKDIR /app
 COPY --from=build /out/server /app/server
-ENV PORT=8080
-EXPOSE 8080
+ENV PORT=8000
+EXPOSE 8000
 USER nonroot:nonroot
 ENTRYPOINT ["/app/server"]
-
-

@@ -7,7 +7,7 @@ import (
 )
 
 type Config struct {
-	Port             string        `env:"PORT" envDefault:"8080"`
+	Port             string        `env:"PORT" envDefault:"8000"`
 	ClickHouseDSN    string        `env:"CLICKHOUSE_DSN" envDefault:"clickhouse://default:default@localhost:9000/default?dial_timeout=5s&compress=true"`
 	LogLevel         string        `env:"LOG_LEVEL" envDefault:"info"`
 	ServiceName      string        `env:"SERVICE_NAME" envDefault:"project-pompa-server"`

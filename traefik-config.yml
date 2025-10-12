@@ -70,3 +70,12 @@ certificatesResolvers:
       storage: /letsencrypt/acme.json
       httpChallenge:
         entrypoint: web
+ 
+tracing:
+  serviceName: traefik
+  sampleRate: 1.0
+  otlp:
+    http:
+      endpoint: https://api.honeycomb.io/v1/traces
+      headers:
+        x-honeycomb-team: CHANGE_ME
