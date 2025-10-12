@@ -11,7 +11,7 @@ services:
       - ./otel-config.yml:/etc/otel-collector-config.yml
     ports:
       - "4317:4317" # otlp receiver
-      - "4318:4318" # OTLP http receiver
+      - "4318:4318" # otlp http receiver
       - "13133:13133" # health_check extension
     depends_on:
       clickhouse:
@@ -21,10 +21,15 @@ services:
       - traefik
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.collector.rule=Host(`trace.otelmap.com`)"
-      - "traefik.http.routers.collector.entrypoints=websecure"
-      - "traefik.http.routers.collector.tls.certresolver=letsencrypt"
-      - "traefik.http.services.collector.loadbalancer.server.port=4318"
+      - "traefik.http.routers.otel-http.rule=(Host(`trace.otelmap.com`)) && PathPrefix(`/v1`)"
+      - "traefik.http.routers.otel-http.entrypoints=web"
+      - "traefik.http.routers.otel-http.service=otel-http"
+      - "traefik.http.services.otel-http.loadbalancer.server.port=4318"
+      - "traefik.http.routers.otel-grpc.rule=(Host(`trace.otelmap.com`)) && PathPrefix(`/opentelemetry.proto`)"
+      - "traefik.http.routers.otel-grpc.entrypoints=web"
+      - "traefik.http.routers.otel-grpc.service=otel-grpc"
+      - "traefik.http.services.otel-grpc.loadbalancer.server.port=4317"
+      - "traefik.http.services.otel-grpc.loadbalancer.server.scheme=h2c"
   clickhouse:
     image: clickhouse/clickhouse-server:25.9
     ports:
@@ -53,7 +58,8 @@ services:
       - otel-clickhouse
       - traefik
     depends_on:
-      - clickhouse
+      clickhouse:
+        condition: service_healthy
     env_file:
       - path: ".env.production"
         required: true
@@ -80,7 +86,6 @@ services:
       - certs:/letsencrypt
     labels:
       - "traefik.enable=false"
-
 volumes:
   clickhouse_data:
   certs:
