@@ -14,8 +14,8 @@ on:
   workflow_dispatch: {}
 
 env:
-  REGISTRY: otelmap-server.registry.dockreg.com
-  IMAGE_NAME: otelmap-server/otelmap-server
+  REGISTRY: otelmap.registry.dockreg.com
+  IMAGE_NAME: server
 
 jobs:
   docker:

@@ -30,6 +30,7 @@ services:
       - "traefik.http.routers.otel-grpc.service=otel-grpc"
       - "traefik.http.services.otel-grpc.loadbalancer.server.port=4317"
       - "traefik.http.services.otel-grpc.loadbalancer.server.scheme=h2c"
+
   clickhouse:
     image: clickhouse/clickhouse-server:25.9
     ports:
@@ -48,10 +49,10 @@ services:
       - otel-clickhouse
     volumes:
       - clickhouse_data:/var/lib/clickhouse
+      - ./sql:/docker-entrypoint-initdb.d
+
   server:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: otelmap.registry.dockreg.com/otelmap-server:latest
     ports:
       - "8000:8000"
     networks:
@@ -69,6 +70,7 @@ services:
       - "traefik.http.routers.server.entrypoints=websecure"
       - "traefik.http.routers.server.tls.certresolver=letsencrypt"
       - "traefik.http.services.server.loadbalancer.server.port=8000"
+
   traefik:
     image: traefik:v3.1
     container_name: traefik
@@ -86,6 +88,7 @@ services:
       - certs:/letsencrypt
     labels:
       - "traefik.enable=false"
+
 volumes:
   clickhouse_data:
   certs:
