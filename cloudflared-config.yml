@@ -1,0 +1,6 @@
+ingress:
+  - hostname: api.otelmap.com
+    service: http://traefik:80
+  - hostname: trace.otelmap.com
+    service: http://traefik:80
+  - service: http_status:404
