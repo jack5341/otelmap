@@ -12,6 +12,7 @@ type Config struct {
 	LogLevel         string        `env:"LOG_LEVEL" envDefault:"info"`
 	ServiceName      string        `env:"SERVICE_NAME" envDefault:"default"`
 	ShutdownTimeoutS int           `env:"SHUTDOWN_TIMEOUT_SECONDS" envDefault:"10"`
+	BaseURL          string        `env:"BASE_URL" envDefault:"otelmap.com"`
 	ShutdownTimeout  time.Duration `env:"-"`
 }
 

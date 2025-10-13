@@ -60,7 +60,7 @@ func main() {
 
 	e := echo.New()
 	otelTracer := otel.Tracer(cfg.ServiceName)
-	httpserver.Register(e, database, otelTracer)
+	httpserver.Register(e, database, otelTracer, &cfg)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

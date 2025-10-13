@@ -6,11 +6,12 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/jack5341/otel-map-server/internal/config"
 	"github.com/jack5341/otel-map-server/internal/handlers"
 	imw "github.com/jack5341/otel-map-server/internal/http/middleware"
 )
 
-func Register(e *echo.Echo, db *gorm.DB, otelTracer trace.Tracer) {
+func Register(e *echo.Echo, db *gorm.DB, otelTracer trace.Tracer, config *config.Config) {
 	imw.Apply(e, otelTracer)
 
 	api := e.Group("/api")
@@ -19,7 +20,7 @@ func Register(e *echo.Echo, db *gorm.DB, otelTracer trace.Tracer) {
 	// Handlers
 	health := handlers.NewHealthHandler(db, otelTracer)
 	serviceMap := handlers.NewServiceMapHandler(db, otelTracer)
-	sessionToken := handlers.NewSessionTokenHandler(db, otelTracer)
+	sessionToken := handlers.NewSessionTokenHandler(db, otelTracer, config)
 
 	// Health endpoints
 	v1.GET("/healthz", health.Liveness)

@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/jack5341/otel-map-server/internal/config"
 	errorz "github.com/jack5341/otel-map-server/internal/errors"
 	"github.com/jack5341/otel-map-server/internal/models"
 	"github.com/labstack/echo/v4"
@@ -14,10 +15,11 @@ import (
 type SessionTokenHandler struct {
 	db         *gorm.DB
 	otelTracer trace.Tracer
+	config     *config.Config
 }
 
-func NewSessionTokenHandler(db *gorm.DB, otelTracer trace.Tracer) *SessionTokenHandler {
-	return &SessionTokenHandler{db: db, otelTracer: otelTracer}
+func NewSessionTokenHandler(db *gorm.DB, otelTracer trace.Tracer, config *config.Config) *SessionTokenHandler {
+	return &SessionTokenHandler{db: db, otelTracer: otelTracer, config: config}
 }
 
 func (h *SessionTokenHandler) Create(c echo.Context) error {
@@ -31,7 +33,8 @@ func (h *SessionTokenHandler) Create(c echo.Context) error {
 	resp := map[string]any{
 		"token": token.String(),
 		"ingest": map[string]any{
-			"otlp_http_url": "https://collector.example.com/v1/traces",
+			"otlp_http_url": "https://" + h.config.BaseURL + "/v1/traces",
+			"otlp_grpc_url": "https://" + h.config.BaseURL + "/opentelemetry.proto",
 			"header_key":    "X-OTEL-SESSION",
 			"header_value":  token.String(),
 			"resource_attribute": map[string]any{

@@ -22,6 +22,10 @@ processors:
       - key: service.name
         value: "serviceName"
         action: upsert
+  filter:
+    traces:
+      span:
+        - 'resource.attributes["otelmap.session_token"] != nil'
 exporters:
   clickhouse:
     endpoint: tcp://clickhouse:9000
@@ -61,7 +65,7 @@ service:
       exporters: [clickhouse]
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection/system, resource, batch]
+      processors: [memory_limiter, resourcedetection/system, resource, filter, batch]
       exporters: [clickhouse]
     metrics:
       receivers: [otlp]
