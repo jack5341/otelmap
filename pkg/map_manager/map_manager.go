@@ -68,7 +68,7 @@ func NewMapManager(db *gorm.DB, otelTracer trace.Tracer) *MapManager {
 }
 
 func (m *MapManager) Create(token uuid.UUID, start *time.Time, end *time.Time, ctx context.Context) (MapDTO, error) {
-	ctx, span := m.otelTracer.Start(context.Background(), "MapManager.Create")
+	ctx, span := m.otelTracer.Start(ctx, "MapManager.Create")
 	defer span.End()
 	var rows []models.OtelTrace
 	query := `SELECT * FROM otel.otel_traces WHERE SpanAttributes['otelmap.session_token'] = ?`

@@ -18,19 +18,7 @@ services:
         condition: service_healthy
     networks:
       - otel-clickhouse
-      - traefik
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=traefik"
-      - "traefik.http.routers.otel-http.rule=(Host(`trace.otelmap.com`)) && PathPrefix(`/v1`)"
-      - "traefik.http.routers.otel-http.entrypoints=web"
-      - "traefik.http.routers.otel-http.service=otel-http"
-      - "traefik.http.services.otel-http.loadbalancer.server.port=4318"
-      - "traefik.http.routers.otel-grpc.rule=(Host(`trace.otelmap.com`)) && PathPrefix(`/opentelemetry.proto`)"
-      - "traefik.http.routers.otel-grpc.entrypoints=web"
-      - "traefik.http.routers.otel-grpc.service=otel-grpc"
-      - "traefik.http.services.otel-grpc.loadbalancer.server.port=4317"
-      - "traefik.http.services.otel-grpc.loadbalancer.server.scheme=h2c"
+      - web
 
   clickhouse:
     image: clickhouse/clickhouse-server:25.9
@@ -58,37 +46,23 @@ services:
       - "8000:8000"
     networks:
       - otel-clickhouse
-      - traefik
+      - web
     depends_on:
       clickhouse:
         condition: service_healthy
     env_file:
       - path: ".env.production"
         required: true
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=traefik"
-      - "traefik.http.routers.server.rule=Host(`api.otelmap.com`)"
-      - "traefik.http.routers.server.entrypoints=web"
-      - "traefik.http.services.server.loadbalancer.server.port=8000"
+    labels: []
 
-  traefik:
-    image: traefik:v3.1
-    container_name: traefik
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: nginx
     restart: unless-stopped
-    command:
-      - "--configFile=/traefik.yaml"
-    ports:
-      - 443:443
-      - 80:80
-    networks:
-      - traefik
     volumes:
-      - ./traefik-config.yml:/traefik.yaml
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - certs:/letsencrypt
-    labels:
-      - "traefik.enable=false"
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - web
 
   cloudflared:
     image: cloudflare/cloudflared:latest
@@ -96,24 +70,24 @@ services:
     restart: unless-stopped
     command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
     networks:
-      - traefik
+      - web
     env_file:
       - path: ".env.production"
         required: true
     depends_on:
-      - traefik
+      - nginx
       - otelcollector
       - server
       - clickhouse
+    volumes:
+      - ./cloudflared-config.yml:/etc/cloudflared/config.yml:ro
 
 volumes:
   clickhouse_data:
-  certs:
 
 networks:
   otel-clickhouse:
     driver: bridge
     internal: true
-  traefik:
-    external: true
-    name: traefik
+  web:
+    driver: bridge

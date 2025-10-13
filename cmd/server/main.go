@@ -19,6 +19,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
+	"go.opentelemetry.io/otel/propagation"
 	sdkresource "go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
@@ -49,6 +50,7 @@ func main() {
 	}
 	defer otelShutdown()
 
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 	database, err := db.Open(cfg.ClickHouseDSN)
 	if err != nil {
 		panic(errors.Join(errorz.ErrDatabaseError, err))
