@@ -82,6 +82,27 @@ services:
     volumes:
       - ./cloudflared-config.yml:/etc/cloudflared/config.yml:ro
 
+  cleanup:
+    image: clickhouse/clickhouse-server:25.9
+    container_name: cleanup
+    restart: "no"
+    command: >
+      sh -c "
+        apk add --no-cache dcron &&
+        echo '0 */6 * * * /scripts/cleanup.sh' | crontab - &&
+        crond -f
+      "
+    networks:
+      - otel-clickhouse
+    env_file:
+      - path: ".env.production"
+        required: true
+    volumes:
+      - ./cleanup.sh:/scripts/cleanup.sh:ro
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
 volumes:
   clickhouse_data:
 

@@ -4,7 +4,7 @@
   <img src="assets/otelmap.png" alt="OTELMAP" width="256" />
 </p>
 
-## OTEL Map Server
+## OTel Map Server
 
 OpenTelemetry traces → ClickHouse storage → Service Map API. This project ingests OTLP (HTTP and gRPC) into ClickHouse via the OpenTelemetry Collector, and exposes an API to build a service map and basic SLO-style stats from collected spans. It’s designed to be simple to run with Docker and reachable on the public internet via a Cloudflare Tunnel.
 
@@ -97,6 +97,11 @@ Ensure your tracer sets the resource attribute `otelmap.session_token` so spans 
 - Collector health: `curl http://localhost:13133/healthz`
 - ClickHouse connectivity: `docker exec -it <clickhouse> clickhouse-client --query "SELECT 1"`
 - Service map empty: ensure spans include the `otelmap.session_token` resource attribute matching your session token
+
+### Data Retention
+- **6-hour retention policy**: ALL traces and session tokens are automatically deleted every 6 hours
+- Cleanup runs every 6 hours via a cron job in the `cleanup` service
+- Manual cleanup: `docker exec cleanup /scripts/cleanup.sh`
 
 ### Development
 Standard Go module project. Key packages:
