@@ -6,6 +6,15 @@ receivers:
       grpc:
         endpoint: 0.0.0.0:4317
 processors:
+  attributes/sensitive_data:
+    actions:
+      - key: user.*
+        action: hash
+      - pattern: auth.*
+        key: auth
+        action: delete
+      - key: client.ip
+        action: hash
   batch:
     send_batch_size: 100000
     timeout: 5s
