@@ -1,58 +1,53 @@
 receivers:
   otlp:
     protocols:
-      http:
-        endpoint: 0.0.0.0:4318
       grpc:
         endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
 processors:
-  attributes/sensitive_data:
-    actions:
-      - key: user.*
-        action: hash
-      - pattern: auth.*
-        key: auth
-        action: delete
-      - key: client.ip
-        action: hash
-  batch:
-    send_batch_size: 100000
-    timeout: 5s
   memory_limiter:
     check_interval: 2s
     limit_mib: 1800
     spike_limit_mib: 500
-  resourcedetection/system:
+
+  attributes/sensitive_data:
+    actions:
+      - key: user.*
+        action: hash
+      - key: auth.*
+        action: delete
+      - key: client.ip
+        action: hash
+
+  resourcedetection:
     detectors: ["system"]
     system:
       hostname_sources: ["os"]
+
   resource:
     attributes:
       - key: service.name
         value: "serviceName"
         action: upsert
+
   filter:
     traces:
       span:
         - 'resource.attributes["otelmap.session_token"] != nil'
+
+  batch:
+    send_batch_size: 100000
+    timeout: 5s
+
 exporters:
   clickhouse:
     endpoint: tcp://clickhouse:9000
-    database: otel
-    logs_table_name: otel_logs
-    traces_table_name: otel_traces
-    metrics_tables:
-      gauge:
-        name: "otel_metrics_custom_gauge"
-      sum:
-        name: "otel_metrics_custom_sum"
-      summary:
-        name: "otel_metrics_custom_summary"
-      histogram:
-        name: "otel_metrics_custom_histogram"
-      exponential_histogram:
-        name: "otel_metrics_custom_exp_histogram"
-    ttl: 730h
+    database: default
+    username: default
+    password: default
+    ttl: 6h
     timeout: 10s
     sending_queue:
       queue_size: 100
@@ -61,22 +56,22 @@ exporters:
       initial_interval: 5s
       max_interval: 30s
       max_elapsed_time: 300s
-    username: default
-    password: default
+
 extensions:
-  health_check:
+  health_check: {}
+
 service:
   extensions: [health_check]
   pipelines:
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection/system, resource, batch]
+      processors: [memory_limiter, resourcedetection, attributes/sensitive_data, resource, batch]
       exporters: [clickhouse]
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection/system, resource, filter, batch]
+      processors: [memory_limiter, resourcedetection, attributes/sensitive_data, resource, filter, batch]
       exporters: [clickhouse]
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection/system, resource, batch]
+      processors: [memory_limiter, resourcedetection, attributes/sensitive_data, resource, batch]
       exporters: [clickhouse]
