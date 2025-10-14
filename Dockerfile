@@ -6,7 +6,7 @@ FROM golang:${GO_VERSION}-bookworm AS build
 WORKDIR /app
 
 COPY go.mod ./
-RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build go mod download
+RUN go mod tidy
 
 COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \

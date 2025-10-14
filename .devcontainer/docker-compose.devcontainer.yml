@@ -1,0 +1,71 @@
+version: "3.8"
+
+services:
+  dev:
+    image: mcr.microsoft.com/devcontainers/go:1.25
+    init: true
+    user: vscode
+    working_dir: /workspace
+    volumes:
+      - ..:/workspace:cached
+      - ./.devcontainer/.cache/go-mod:/go/pkg/mod
+      - ./.devcontainer/.cache/go-build:/home/vscode/.cache/go-build
+    command: sleep infinity
+    environment:
+      - PORT=8000
+      - LOG_LEVEL=info
+      - SHUTDOWN_TIMEOUT_SECONDS=10
+      - CLICKHOUSE_DSN=clickhouse://default:default@clickhouse:9000/default?dial_timeout=5s&compress=true
+    networks:
+      - otel-clickhouse
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      otelcollector:
+        condition: service_started
+    ports:
+      - "8000:8000"
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.9
+    ports:
+      - "9000:9000"
+      - "8123:8123"
+    healthcheck:
+      test: [ "CMD-SHELL", "clickhouse-client -u default --password default --query 'SELECT 1' || exit 1" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: default
+    networks:
+      - otel-clickhouse
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ../sql:/docker-entrypoint-initdb.d
+
+  otelcollector:
+    image: otel/opentelemetry-collector-contrib:0.114.0
+    command:
+      - "--config=/etc/otel-collector-config.yml"
+      - "--set=service.telemetry.logs.level=INFO"
+    volumes:
+      - ../otel-config.yml:/etc/otel-collector-config.yml
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "13133:13133"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - otel-clickhouse
+
+volumes:
+  clickhouse_data:
+
+networks:
+  otel-clickhouse:
+    driver: bridge

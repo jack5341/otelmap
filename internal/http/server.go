@@ -21,11 +21,13 @@ func Register(e *echo.Echo, db *gorm.DB, otelTracer trace.Tracer, config *config
 	health := handlers.NewHealthHandler(db, otelTracer)
 	serviceMap := handlers.NewServiceMapHandler(db, otelTracer)
 	sessionToken := handlers.NewSessionTokenHandler(db, otelTracer, config)
+	sessionEvents := handlers.NewSessionEventsHandler(db, otelTracer, config)
 
 	// Health endpoints
 	v1.GET("/healthz", health.Liveness)
 	v1.GET("/readyz", health.Readiness)
 
 	v1.GET("/service-map/:session-token", serviceMap.Get)
+	v1.GET("/session-events", sessionEvents.Listen)
 	v1.POST("/session-token", sessionToken.Create)
 }

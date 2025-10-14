@@ -1,0 +1,26 @@
+{
+  "name": "otel-map-server-dev",
+  "dockerComposeFile": [
+    "docker-compose.devcontainer.yml"
+  ],
+  "service": "dev",
+  "workspaceFolder": "/workspace",
+  "forwardPorts": [8000, 4317, 4318, 13133, 8123, 9000],
+  "shutdownAction": "stopCompose",
+  "remoteUser": "vscode",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "go.gopath": "/go",
+        "go.useLanguageServer": true,
+        "go.formatTool": "gofmt"
+      },
+      "extensions": [
+        "golang.go",
+        "ms-azuretools.vscode-docker"
+      ]
+    }
+  },
+  "postCreateCommand": "bash -lc 'go mod download'"
+}
+

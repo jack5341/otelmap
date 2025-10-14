@@ -111,3 +111,23 @@ Standard Go module project. Key packages:
 - `pkg/map_manager`: builds the map DTO from ClickHouse rows
 
 
+### Dev Container (VS Code / Cursor)
+Open this repo in a dev container with ClickHouse and the OpenTelemetry Collector running alongside a Go dev environment.
+
+Steps:
+
+1. Install the "Dev Containers" extension.
+2. Open the repo folder and choose: Reopen in Container.
+3. The compose stack defined at `.devcontainer/docker-compose.devcontainer.yml` will start:
+   - Go dev container (mounted workspace, port 8000 forwarded)
+   - ClickHouse (9000 native, 8123 HTTP)
+   - OTEL Collector (4317 gRPC, 4318 HTTP, 13133 health)
+4. Inside the container terminal:
+
+```bash
+make tidy
+make build
+./bin/server
+```
+
+The API listens on `http://localhost:8000` on your host.

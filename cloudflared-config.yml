@@ -1,11 +1,11 @@
 ingress:
   - hostname: api.otelmap.com
     service: http://nginx:80
-  - hostname: trace.otelmap.com
+  - hostname: otlp.otelmap.com
     path: /opentelemetry.proto
     service: h2c://otelcollector:4317
     originRequest:
       http2Origin: true
-  - hostname: trace.otelmap.com
+  - hostname: otlp.otelmap.com
     service: http://nginx:80
   - service: http_status:404

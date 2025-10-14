@@ -34,12 +34,11 @@ services:
     env_file:
       - path: ".env.production"
         required: true
-    networks:
+    networks: 
       - otel-clickhouse
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./sql:/docker-entrypoint-initdb.d
-
   server:
     image: otelmap.registry.dockreg.com/server:latest
     ports:

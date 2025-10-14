@@ -65,3 +65,4 @@ coverage/
 
 # Docker volumes
 docker-data/
+.devcontainer/.cache/
