@@ -68,6 +68,7 @@ After startup, the public endpoints (via Cloudflare) should be:
 - `GET /api/v1/healthz`
 - `GET /api/v1/readyz`
 - `POST /api/v1/session-token` → returns a session token and example ingest config
+- `POST /api/v1/session-events` → event pooling for listening traces
 - `GET /api/v1/service-map/:session-token?start=RFC3339&end=RFC3339`
 
 ### Tracing Ingest
