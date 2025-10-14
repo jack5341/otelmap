@@ -8,6 +8,8 @@ services:
     working_dir: /workspace
     volumes:
       - ..:/workspace:cached
+      - ./.devcontainer/.cache/go-mod:/go/pkg/mod
+      - ./.devcontainer/.cache/go-build:/home/vscode/.cache/go-build
     command: sleep infinity
     environment:
       - PORT=8000
