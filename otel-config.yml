@@ -25,11 +25,11 @@ processors:
   filter:
     traces:
       span:
-        - 'resource.attributes["otelmap.session_token"] != nil'
+        - 'resource.attributes["otelmap.session_token"] == nil'
 exporters:
   clickhouse:
     endpoint: tcp://clickhouse:9000
-    database: otel
+    database: default
     logs_table_name: otel_logs
     traces_table_name: otel_traces
     metrics_tables:

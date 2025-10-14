@@ -39,8 +39,11 @@ services:
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./sql:/docker-entrypoint-initdb.d
+      
   server:
-    image: otelmap.registry.dockreg.com/server:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     networks:

@@ -23,7 +23,6 @@ services:
         condition: service_started
     ports:
       - "8000:8000"
-
   clickhouse:
     image: clickhouse/clickhouse-server:25.9
     ports:
@@ -43,7 +42,6 @@ services:
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ../sql:/docker-entrypoint-initdb.d
-
   otelcollector:
     image: otel/opentelemetry-collector-contrib:0.114.0
     command:
@@ -63,7 +61,6 @@ services:
 
 volumes:
   clickhouse_data:
-
 networks:
   otel-clickhouse:
     driver: bridge

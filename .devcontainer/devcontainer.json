@@ -5,7 +5,15 @@
   ],
   "service": "dev",
   "workspaceFolder": "/workspace",
-  "forwardPorts": [8000, 4317, 4318, 13133, 8123, 9000],
+  "runServices": ["clickhouse", "otelcollector"],
+  "forwardPorts": [
+    8000,
+    9000,
+    8123,
+    4317,
+    4318,
+    13133
+  ],
   "shutdownAction": "stopCompose",
   "remoteUser": "vscode",
   "customizations": {
