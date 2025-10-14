@@ -27,7 +27,6 @@ func (h *SessionEventsHandler) Listen(c echo.Context) error {
 	ctx, span := h.otelTracer.Start(c.Request().Context(), "SessionEventsHandler.Listen")
 	defer span.End()
 
-	// If a token query param is provided, switch to SSE polling mode
 	tokenParam := c.QueryParam("token")
 	if tokenParam != "" {
 		tokenUUID, err := uuid.Parse(tokenParam)
@@ -43,7 +42,6 @@ func (h *SessionEventsHandler) Listen(c echo.Context) error {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": errorz.ErrSessionTokenNotFound.Error()})
 		}
 
-		// Prepare SSE headers
 		res := c.Response()
 		res.Header().Set(echo.HeaderContentType, "text/event-stream")
 		res.Header().Set(echo.HeaderCacheControl, "no-cache")

@@ -11,7 +11,7 @@ OpenTelemetry traces → ClickHouse storage → Service Map API. This project in
 ### Architecture
 - NGINX reverse proxy routes domains:
   - `api.otelmap.com` → Go API server (`server:8000`)
-  - `trace.otelmap.com` → OTLP HTTP `/v1/*` to collector (`otelcollector:4318`)
+  - `otlp.otelmap.com` → OTLP HTTP `/v1/*` to collector (`otelcollector:4318`)
     - gRPC `/opentelemetry.proto` goes direct via Cloudflared (h2c) to `otelcollector:4317`
 - Cloudflared tunnel publishes both domains to the internet using a token
 - OpenTelemetry Collector writes to ClickHouse tables
@@ -20,7 +20,7 @@ OpenTelemetry traces → ClickHouse storage → Service Map API. This project in
 ### Prerequisites
 - Docker and Docker Compose
 - Cloudflare account with a Zero Trust Tunnel and token
-- DNS `api.otelmap.com` and `trace.otelmap.com` owned and managed in Cloudflare
+- DNS `api.otelmap.com` and `otlp.otelmap.com` owned and managed in Cloudflare
 
 ### Environment variables (.env.production)
 Create `.env.production` in the repo root with at least:
@@ -40,7 +40,7 @@ CLICKHOUSE_DSN=clickhouse://default:default@clickhouse:9000/default?dial_timeout
 ### Domain and Tunnel
 - The compose mounts `cloudflared-config.yml` which defines:
   - `api.otelmap.com` → `http://nginx:80`
-  - `trace.otelmap.com`:
+  - `otlp.otelmap.com`:
     - `/opentelemetry.proto` → `h2c://otelcollector:4317` (gRPC)
     - everything else → `http://nginx:80` (OTLP HTTP under `/v1/*`)
 - In Cloudflare Zero Trust → Tunnels, create a tunnel and copy its Token into `CLOUDFLARE_TUNNEL_TOKEN`.
@@ -61,8 +61,8 @@ Services:
 
 After startup, the public endpoints (via Cloudflare) should be:
 - `https://api.otelmap.com` (Echo API)
-- `https://trace.otelmap.com/v1/traces` (OTLP HTTP ingest)
-- `https://trace.otelmap.com/opentelemetry.proto` (OTLP gRPC ingest)
+- `https://otlp.otelmap.com/v1/traces` (OTLP HTTP ingest)
+- `https://otlp.otelmap.com/opentelemetry.proto` (OTLP gRPC ingest)
 
 ### API Endpoints (internal paths)
 - `GET /api/v1/healthz`
@@ -78,7 +78,7 @@ curl -X POST https://api.otelmap.com/api/v1/session-token
 ```
 
 The response contains:
-- `ingest.otlp_http_url`: e.g., `https://trace.otelmap.com/v1/traces`
+- `ingest.otlp_http_url`: e.g., `https://otlp.otelmap.com/v1/traces`
 - `ingest.header_key`: `X-OTEL-SESSION`
 - `ingest.header_value`: your token
 - `ingest.resource_attribute`: `{ key: "otelmap.session_token", value: <token> }`
@@ -93,7 +93,7 @@ Ensure your tracer sets the resource attribute `otelmap.session_token` so spans 
 
 ### Troubleshooting
 - Tunnel: verify `cloudflared` logs and that `CLOUDFLARE_TUNNEL_TOKEN` is valid
-- Ingest: `curl https://trace.otelmap.com/v1/traces -I` should return 405/404 (collector present)
+- Ingest: `curl https://otlp.otelmap.com/v1/traces -I` should return 405/404 (collector present)
 - Collector health: `curl http://localhost:13133/healthz`
 - ClickHouse connectivity: `docker exec -it <clickhouse> clickhouse-client --query "SELECT 1"`
 - Service map empty: ensure spans include the `otelmap.session_token` resource attribute matching your session token
