@@ -21,4 +21,4 @@ type OtelTrace struct {
 }
 
 // Use fully qualified database.table for ClickHouse OTEL dataset
-func (OtelTrace) TableName() string { return "otel.otel_traces" }
+func (OtelTrace) TableName() string { return "default.otel_traces" }

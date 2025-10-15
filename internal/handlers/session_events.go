@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -12,6 +14,11 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
 )
+
+type SessionEventResponse struct {
+	Status  string `json:"status"`
+	Message string `json:"message,omitempty"`
+}
 
 type SessionEventsHandler struct {
 	db         *gorm.DB
@@ -59,10 +66,10 @@ func (h *SessionEventsHandler) Listen(c echo.Context) error {
 
 		hasTraces := func() (bool, error) {
 			var count int64
-			if err := h.db.WithContext(ctx).Raw(
-				"SELECT count() FROM otel.otel_traces WHERE SpanAttributes['otelmap.session_token'] = ? LIMIT 1",
-				tokenUUID.String(),
-			).Scan(&count).Error; err != nil {
+			if err := h.db.WithContext(ctx).
+				Model(&models.OtelTrace{}).
+				Raw("SELECT count() FROM default.otel_traces WHERE ResourceAttributes['otelmap.session_token'] = ?", tokenUUID.String()).
+				Scan(&count).Error; err != nil {
 				return false, err
 			}
 			return count > 0, nil
@@ -70,7 +77,8 @@ func (h *SessionEventsHandler) Listen(c echo.Context) error {
 
 		sentEvent := false
 		if okFound, err := hasTraces(); err == nil && okFound {
-			_, _ = res.Write([]byte("event: traces_received\ndata: {}\n\n"))
+			eventData, _ := json.Marshal(SessionEventResponse{Status: "received"})
+			_, _ = res.Write([]byte(fmt.Sprintf("event: traces_received\ndata: %s\n\n", eventData)))
 			flusher.Flush()
 			sentEvent = true
 		}
@@ -78,26 +86,38 @@ func (h *SessionEventsHandler) Listen(c echo.Context) error {
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
 
+		timeout := time.NewTimer(60 * time.Second)
+		defer timeout.Stop()
+
 		for {
 			select {
 			case <-c.Request().Context().Done():
 				return nil
 			case <-ctx.Done():
 				return nil
+			case <-timeout.C:
+				return nil
 			case <-ticker.C:
 				if !sentEvent {
 					found, err := hasTraces()
 					if err != nil {
+						fmt.Println("Error checking traces:", err)
 						return nil
 					}
 					if found {
-						_, _ = res.Write([]byte("event: traces_received\ndata: {}\n\n"))
+						eventData, _ := json.Marshal(SessionEventResponse{Status: "received"})
+						_, _ = res.Write([]byte(fmt.Sprintf("event: traces_received\ndata: %s\n\n", eventData)))
 						flusher.Flush()
 						sentEvent = true
+					} else {
+						eventData, _ := json.Marshal(SessionEventResponse{Status: "waiting"})
+						_, _ = res.Write([]byte(fmt.Sprintf("event: waiting_trace\ndata: %s\n\n", eventData)))
+						flusher.Flush()
 					}
+				} else {
+					_, _ = res.Write([]byte(": keepalive\n\n"))
+					flusher.Flush()
 				}
-				_, _ = res.Write([]byte(": keepalive\n\n"))
-				flusher.Flush()
 			}
 		}
 	}

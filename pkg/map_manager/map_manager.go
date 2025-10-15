@@ -71,7 +71,7 @@ func (m *MapManager) Create(token uuid.UUID, start *time.Time, end *time.Time, c
 	ctx, span := m.otelTracer.Start(ctx, "MapManager.Create")
 	defer span.End()
 	var rows []models.OtelTrace
-	query := `SELECT * FROM otel.otel_traces WHERE SpanAttributes['otelmap.session_token'] = ?`
+	query := `SELECT * FROM default.otel_traces WHERE SpanAttributes['otelmap.session_token'] = ?`
 	args := []interface{}{token.String()}
 
 	if start != nil {

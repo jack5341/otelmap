@@ -26,16 +26,16 @@ processors:
     system:
       hostname_sources: ["os"]
 
-  resource:
-    attributes:
-      - key: service.name
-        value: "serviceName"
-        action: upsert
+  # resource:
+  #   attributes:
+  #     - key: service.name
+  #       value: "serviceName"
+  #       action: upsert
 
-  filter:
-    traces:
-      span:
-        - 'resource.attributes["otelmap.session_token"] != nil'
+  # filter:
+  #   traces:
+  #     span:
+  #       - 'resource.attributes["otelmap.session_token"] != nil'
 
   batch:
     send_batch_size: 100000
@@ -65,13 +65,13 @@ service:
   pipelines:
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, attributes/sensitive_data, resource, batch]
+      processors: [memory_limiter, resourcedetection, attributes/sensitive_data, batch]
       exporters: [clickhouse]
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, attributes/sensitive_data, resource, filter, batch]
+      processors: [memory_limiter, resourcedetection, attributes/sensitive_data, batch]
       exporters: [clickhouse]
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, attributes/sensitive_data, resource, batch]
+      processors: [memory_limiter, resourcedetection, attributes/sensitive_data, batch]
       exporters: [clickhouse]
