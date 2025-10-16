@@ -57,6 +57,47 @@ After startup, the endpoints will be available at:
 - `GET /api/v1/session-events?token=<uuid>` → SSE endpoint for listening to trace events
 - `GET /api/v1/service-map/:session-token?start=RFC3339&end=RFC3339` → get service map
 
+### Service Map Response
+- Direct, Jaeger-style service dependencies are returned as deduplicated parent→child edges.
+- Per-service fields:
+  - `name`, `count`, `rps`, `throughput_bps`, `error_rate`.
+- Per-edge fields:
+  - `source` (service), `target` (service), `rps`.
+- Time window:
+  - Service `rps` and edge `rps` are computed over the last 60 seconds relative to the request time.
+
+Example
+
+```json
+{
+  "services": [
+    {
+      "name": "frontend",
+      "count": 1234,
+      "rps": 12.3,
+      "throughput_bps": 456789.0,
+      "error_rate": 0.02
+    },
+    {
+      "name": "backend",
+      "count": 980,
+      "rps": 9.8,
+      "throughput_bps": 321000.0,
+      "error_rate": 0.01
+    }
+  ],
+  "edges": [
+    {
+      "source": { "name": "frontend", "count": 1234, "rps": 12.3, "throughput_bps": 456789.0, "error_rate": 0.02 },
+      "rps": 8.5,
+      "target": { "name": "backend", "count": 980, "rps": 9.8, "throughput_bps": 321000.0, "error_rate": 0.01 }
+    }
+  ]
+}
+```
+
+Conceptually aligned with Jaeger’s service dependency graph. See: [Jaeger repository](https://github.com/jaegertracing/jaeger).
+
 ### Tracing Ingest
 First, create a session token:
 
