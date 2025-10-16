@@ -21,11 +21,6 @@ processors:
       - key: client.ip
         action: hash
 
-  resourcedetection:
-    detectors: ["system"]
-    system:
-      hostname_sources: ["os"]
-
   # resource:
   #   attributes:
   #     - key: service.name
@@ -58,20 +53,21 @@ exporters:
       max_elapsed_time: 300s
 
 extensions:
-  health_check: {}
+  health_check:
+    endpoint: 0.0.0.0:13133
 
 service:
   extensions: [health_check]
   pipelines:
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, attributes/sensitive_data, batch]
+      processors: [memory_limiter, attributes/sensitive_data, batch]
       exporters: [clickhouse]
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, attributes/sensitive_data, batch]
+      processors: [memory_limiter, attributes/sensitive_data, batch]
       exporters: [clickhouse]
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, attributes/sensitive_data, batch]
+      processors: [memory_limiter, attributes/sensitive_data, batch]
       exporters: [clickhouse]

@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/uuid"
 	errorz "github.com/jack5341/otel-map-server/internal/errors"
-	"github.com/jack5341/otel-map-server/internal/models"
 	mapmanager "github.com/jack5341/otel-map-server/pkg/map_manager"
 	"github.com/labstack/echo/v4"
 	"go.opentelemetry.io/otel/trace"
@@ -37,15 +36,6 @@ func (h *ServiceMapHandler) Get(c echo.Context) error {
 	var tokenUUID, err = uuid.Parse(sessionToken)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": errorz.ErrInvalidSessionToken.Error()})
-	}
-
-	var token models.SessionToken
-	if err := h.db.WithContext(ctx).Find(&token, models.SessionToken{Token: tokenUUID}).Error; err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": errorz.ErrSessionTokenNotFound.Error()})
-	}
-
-	if token.Token == uuid.Nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": errorz.ErrSessionTokenNotFound.Error()})
 	}
 
 	startParam := c.QueryParam("start")
