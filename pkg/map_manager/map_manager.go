@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	errorz "github.com/jack5341/otel-map-server/internal/errors"
 	"github.com/jack5341/otel-map-server/internal/models"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
 )
@@ -64,11 +65,20 @@ func (m *MapManager) Create(token uuid.UUID, start *time.Time, end *time.Time, c
 	}
 
 	if err := m.db.WithContext(ctx).Raw(query, args...).Scan(&rows).Error; err != nil {
-		return MapDTO{}, errors.Join(errorz.ErrWhileGettingOtelTraces, err)
+		errWrapped := errors.Join(errorz.ErrWhileGettingOtelTraces, err)
+		span.RecordError(errWrapped)
+		span.SetStatus(codes.Error, errWrapped.Error())
+		return MapDTO{}, errWrapped
 	}
 
 	requestFlows := m.buildRequestFlows(rows)
-	globalMetrics, services := m.buildGlobalMetricsAndServices(ctx, rows)
+	globalMetrics, services, err := m.buildGlobalMetricsAndServices(ctx, rows)
+	if err != nil {
+		errWrapped := errors.Join(errorz.ErrWhileBuildingGlobalMetricsAndServices, err)
+		span.RecordError(errWrapped)
+		span.SetStatus(codes.Error, errWrapped.Error())
+		return MapDTO{}, errWrapped
+	}
 
 	return MapDTO{
 		RequestFlows:  requestFlows,
@@ -77,7 +87,10 @@ func (m *MapManager) Create(token uuid.UUID, start *time.Time, end *time.Time, c
 	}, nil
 }
 
-func (m *MapManager) buildGlobalMetricsAndServices(ctx context.Context, rows []models.OtelTrace) (GlobalMetrics, []Service) {
+func (m *MapManager) buildGlobalMetricsAndServices(ctx context.Context, rows []models.OtelTrace) (GlobalMetrics, []Service, error) {
+	ctx, span := m.otelTracer.Start(ctx, "MapManager.buildGlobalMetricsAndServices")
+	defer span.End()
+
 	var (
 		totalRequests int64
 		totalErrors   int64
@@ -88,32 +101,53 @@ func (m *MapManager) buildGlobalMetricsAndServices(ctx context.Context, rows []m
 	for _, r := range rows {
 		if _, ok := serviceNames[r.ServiceName]; !ok {
 			var (
-				count  int64
-				errors int64
+				traceCount int64
+				errorCount int64
 			)
 
 			oneMinuteAgo := time.Now().Add(-1 * time.Minute)
-			m.db.WithContext(ctx).
+			err := m.db.WithContext(ctx).
 				Model(&models.OtelTrace{}).
-				Where("service_name = ?", r.ServiceName).
-				Where("timestamp >= ?", oneMinuteAgo).
-				Count(&count)
+				Where("ServiceName = ?", r.ServiceName).
+				Where("Timestamp >= ?", oneMinuteAgo).
+				Count(&traceCount).Error
 
-			m.db.WithContext(ctx).
+			if err != nil {
+				errWrapped := errors.Join(errorz.ErrWhileGettingOtelTraceCount, err)
+				span.RecordError(errWrapped)
+				span.SetStatus(codes.Error, errWrapped.Error())
+				return GlobalMetrics{}, nil, errWrapped
+			}
+
+			err = m.db.WithContext(ctx).
 				Model(&models.OtelTrace{}).
-				Where("service_name = ?", r.ServiceName).
-				Where("status_code = 'Error'").
-				Where("timestamp >= ?", oneMinuteAgo).
-				Count(&errors)
+				Where("ServiceName = ?", r.ServiceName).
+				Where("StatusCode = ?", "Error").
+				Where("Timestamp >= ?", oneMinuteAgo).
+				Count(&errorCount).Error
 
-			throughputBps := float64(count) * float64(r.Duration) / 1000000
+			if err != nil {
+				errWrapped := errors.Join(errorz.ErrWhileGettingOtelTraceErrorCount, err)
+				span.RecordError(errWrapped)
+				span.SetStatus(codes.Error, errWrapped.Error())
+				return GlobalMetrics{}, nil, errWrapped
+			}
+
+			throughputBps := float64(traceCount) * float64(r.Duration) / 1000000
+
+			var errorRate float64
+			if traceCount > 0 {
+				errorRate = float64(errorCount) / float64(traceCount)
+			} else {
+				errorRate = 0
+			}
 
 			services = append(services, Service{
 				Name:          r.ServiceName,
-				Count:         int(count),
-				Rps:           float64(count) / time.Since(oneMinuteAgo).Seconds(),
+				Count:         int(traceCount),
+				Rps:           float64(traceCount) / time.Since(oneMinuteAgo).Seconds(),
 				ThroughputBps: throughputBps,
-				ErrorRate:     float64(errors) / float64(count),
+				ErrorRate:     errorRate,
 			})
 
 			serviceNames[r.ServiceName] = true
@@ -121,22 +155,44 @@ func (m *MapManager) buildGlobalMetricsAndServices(ctx context.Context, rows []m
 	}
 
 	oneMinuteAgo := time.Now().Add(-1 * time.Minute)
-	m.db.WithContext(ctx).
+	err := m.db.WithContext(ctx).
 		Model(&models.OtelTrace{}).
-		Where("timestamp >= ?", oneMinuteAgo).
-		Count(&totalRequests)
-	m.db.WithContext(ctx).
+		Where("Timestamp >= ?", oneMinuteAgo).
+		Count(&totalRequests).Error
+
+	if err != nil {
+		errWrapped := errors.Join(errorz.ErrWhileGettingOtelTraceCount, err)
+		span.RecordError(errWrapped)
+		span.SetStatus(codes.Error, errWrapped.Error())
+		return GlobalMetrics{}, nil, errWrapped
+	}
+
+	err = m.db.WithContext(ctx).
 		Model(&models.OtelTrace{}).
-		Where("status_code = 'Error'").
-		Where("timestamp >= ?", oneMinuteAgo).
-		Count(&totalErrors)
+		Where("StatusCode = ?", "Error").
+		Where("Timestamp >= ?", oneMinuteAgo).
+		Count(&totalErrors).Error
+
+	if err != nil {
+		errWrapped := errors.Join(errorz.ErrWhileGettingOtelTraceErrorCount, err)
+		span.RecordError(errWrapped)
+		span.SetStatus(codes.Error, errWrapped.Error())
+		return GlobalMetrics{}, nil, errWrapped
+	}
+
+	var globalErrorRate float64
+	if totalRequests > 0 {
+		globalErrorRate = float64(totalErrors) / float64(totalRequests)
+	} else {
+		globalErrorRate = 0
+	}
 
 	return GlobalMetrics{
 		TotalServices: len(services),
 		TotalRequests: int(totalRequests),
 		AvgRps:        float64(totalRequests) / time.Since(oneMinuteAgo).Seconds(),
-		ErrorRate:     float64(totalErrors) / float64(totalRequests),
-	}, services
+		ErrorRate:     globalErrorRate,
+	}, services, nil
 }
 
 func (m *MapManager) buildRequestFlows(rows []models.OtelTrace) []RequestFlow {
@@ -149,7 +205,6 @@ func (m *MapManager) buildRequestFlows(rows []models.OtelTrace) []RequestFlow {
 		}
 	}
 
-	// Determine roots: no parent or parent not included in this dataset
 	var roots []models.OtelTrace
 	for _, r := range rows {
 		if r.ParentSpanId == "" {
@@ -161,7 +216,6 @@ func (m *MapManager) buildRequestFlows(rows []models.OtelTrace) []RequestFlow {
 		}
 	}
 
-	// Recursive constructor for RequestFlow
 	var build func(models.OtelTrace) RequestFlow
 	build = func(r models.OtelTrace) RequestFlow {
 		var childFlows []RequestFlow
@@ -183,5 +237,6 @@ func (m *MapManager) buildRequestFlows(rows []models.OtelTrace) []RequestFlow {
 	for _, root := range roots {
 		requestFlows = append(requestFlows, build(root))
 	}
+
 	return requestFlows
 }

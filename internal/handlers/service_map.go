@@ -2,11 +2,11 @@ package handlers
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/google/uuid"
 	errorz "github.com/jack5341/otel-map-server/internal/errors"
-	mapmanager "github.com/jack5341/otel-map-server/pkg/map_manager"
+	"github.com/jack5341/otel-map-server/internal/models"
+	pkg "github.com/jack5341/otel-map-server/pkg/mapper"
 	"github.com/labstack/echo/v4"
 	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
@@ -38,29 +38,31 @@ func (h *ServiceMapHandler) Get(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": errorz.ErrInvalidSessionToken.Error()})
 	}
 
-	startParam := c.QueryParam("start")
-	endParam := c.QueryParam("end")
+	var spans []models.OtelTrace
 
-	var start, end *time.Time
-	if startParam != "" {
-		if parsed, err := time.Parse(time.RFC3339, startParam); err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid start time format"})
-		} else {
-			start = &parsed
-		}
-	}
-	if endParam != "" {
-		if parsed, err := time.Parse(time.RFC3339, endParam); err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid end time format"})
-		} else {
-			end = &parsed
-		}
-	}
-
-	manager := mapmanager.NewMapManager(h.db, h.otelTracer)
-	dto, err := manager.Create(tokenUUID, start, end, ctx)
-	if err != nil {
+	if err := h.db.WithContext(ctx).Where("ResourceAttributes['otelmap.session_token'] = ?", tokenUUID.String()).Find(&spans).Error; err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
-	return c.JSON(http.StatusOK, dto)
+
+	mapper := pkg.NewMapper(h.otelTracer, ctx)
+	otelSpans := make([]pkg.Span, len(spans))
+	for i, s := range spans {
+		otelSpans[i] = pkg.Span{
+			TraceId:            s.TraceId,
+			SpanId:             s.SpanId,
+			ParentSpanId:       s.ParentSpanId,
+			ServiceName:        s.ServiceName,
+			SpanName:           s.SpanName,
+			SpanKind:           s.SpanKind,
+			Timestamp:          s.Timestamp,
+			Duration:           s.Duration,
+			StatusCode:         s.StatusCode,
+			SpanAttributes:     s.SpanAttributes,
+			ResourceAttributes: s.ResourceAttributes,
+			Events:             s.Events,
+			Links:              s.Links,
+		}
+	}
+	nodes, err := mapper.Create(spans)
+	return c.JSON(http.StatusOK, nodes)
 }

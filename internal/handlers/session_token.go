@@ -33,8 +33,8 @@ func (h *SessionTokenHandler) Create(c echo.Context) error {
 	resp := map[string]any{
 		"token": token.String(),
 		"ingest": map[string]any{
-			"otlp_http_url": "https://" + h.config.BaseURL + "/v1/traces",
-			"otlp_grpc_url": "https://" + h.config.BaseURL + "/opentelemetry.proto",
+			"otlp_http_url": "https://otlp." + h.config.BaseURL + "/v1/traces",
+			"otlp_grpc_url": "https://otlp." + h.config.BaseURL + "/opentelemetry.proto",
 			"header_key":    "X-OTEL-SESSION",
 			"header_value":  token.String(),
 			"resource_attribute": map[string]any{
