@@ -237,6 +237,5 @@ func (m *MapManager) buildRequestFlows(rows []models.OtelTrace) []RequestFlow {
 	for _, root := range roots {
 		requestFlows = append(requestFlows, build(root))
 	}
-
 	return requestFlows
 }
