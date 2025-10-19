@@ -8,6 +8,10 @@
 
 OpenTelemetry traces → ClickHouse storage → Service Map API. This project ingests OTLP (HTTP and gRPC) into ClickHouse via the OpenTelemetry Collector, and exposes an API to build a service map and basic SLO-style stats from collected spans.
 
+<p align="center">
+  <img src="assets/otelmap.gif" alt="OTELMAP" width="100%" />
+</p>
+
 ### Architecture
 - NGINX reverse proxy routes traffic:
   - `/api/*` → Go API server (`server:8000`)
