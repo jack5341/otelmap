@@ -18,3 +18,4 @@ var ErrWhileGettingOtelTraceErrorCount = errors.New("error while getting otel tr
 var ErrWhileBuildingGlobalMetricsAndServices = errors.New("error while building global metrics and services")
 var ErrWhileGettingOtelTraceThroughputBps = errors.New("error while getting otel trace throughput bps")
 var ErrWhileGettingOtelTraceErrorRate = errors.New("error while getting otel trace error rate")
+var ErrWhileBuildingEdges = errors.New("error while building edges")

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	errorz "github.com/jack5341/otel-map-server/internal/errors"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
 )
@@ -47,8 +48,9 @@ type ServiceMap struct {
 }
 
 type Edge struct {
-	Source Service `json:"source"`
-	Target string  `json:"target"`
+	Source *Service `json:"source"`
+	Rps    float64  `json:"rps"`
+	Target *Service `json:"target"`
 }
 
 type Service struct {
@@ -78,81 +80,143 @@ func NewMapper(dbConfig DBConfig, options ...interface{}) *Mapper {
 }
 
 func (m *Mapper) Create() (ServiceMap, error) {
-	_, span := m.otelTracer.Start(m.ctx, "Mapper.Create")
+	ctx, span := m.otelTracer.Start(m.ctx, "Mapper.Create")
 	defer span.End()
 
-	var serviceMap ServiceMap
-	serviceNames, err := m.getServiceNames(m.ctx)
-	if err != nil {
-		return ServiceMap{}, err
+	var rows []OtelTrace
+	query := fmt.Sprintf(
+		"SELECT * FROM %s WHERE ResourceAttributes['%s'] = ?",
+		m.dbConfig.TableName,
+		m.dbConfig.SessionKey,
+	)
+	if err := m.dbConfig.Db.WithContext(ctx).Raw(query, m.dbConfig.SessionToken).Scan(&rows).Error; err != nil {
+		errWrapped := errors.Join(errorz.ErrWhileGettingOtelTraces, err)
+		span.RecordError(errWrapped)
+		span.SetStatus(codes.Error, errWrapped.Error())
+		return ServiceMap{}, errWrapped
 	}
 
-	for _, name := range serviceNames {
-		service, err := m.buildServiceMetrics(m.ctx, OtelTrace{ServiceName: name})
-		if err != nil {
-			return ServiceMap{}, err
+	serviceNameToService := buildServices(rows)
+	edges := buildEdges(rows, serviceNameToService)
+	services := make([]Service, 0, len(serviceNameToService))
+	for _, s := range serviceNameToService {
+		services = append(services, *s)
+	}
+	return ServiceMap{Services: services, Edges: edges}, nil
+}
+
+func buildServices(rows []OtelTrace) map[string]*Service {
+	services := make(map[string]*Service)
+
+	oneMinuteAgo := time.Now().Add(-1 * time.Minute)
+	secondsSince := time.Since(oneMinuteAgo).Seconds()
+	if secondsSince <= 0 {
+		secondsSince = 60
+	}
+
+	type agg struct {
+		totalCount           int
+		lastMinuteCount      int
+		lastMinuteErrorCount int
+		lastMinuteDurNS      int64
+	}
+	serviceAgg := make(map[string]*agg)
+
+	for _, r := range rows {
+		a, ok := serviceAgg[r.ServiceName]
+		if !ok {
+			a = &agg{}
+			serviceAgg[r.ServiceName] = a
 		}
-		serviceMap.Services = append(serviceMap.Services, service)
+		a.totalCount++
+		if !r.Timestamp.Before(oneMinuteAgo) {
+			a.lastMinuteCount++
+			a.lastMinuteDurNS += r.Duration
+			if r.StatusCode == "Error" {
+				a.lastMinuteErrorCount++
+			}
+		}
 	}
 
-	return serviceMap, nil
+	for name, a := range serviceAgg {
+		var rps float64
+		if a.lastMinuteCount > 0 {
+			rps = float64(a.lastMinuteCount) / secondsSince
+		}
+		var errRate float64
+		if a.lastMinuteCount > 0 {
+			errRate = float64(a.lastMinuteErrorCount) / float64(a.lastMinuteCount)
+		}
+		var throughputBps float64
+		if a.lastMinuteDurNS > 0 {
+			throughputBps = float64(a.lastMinuteDurNS) / secondsSince
+		}
+
+		services[name] = &Service{
+			Name:          name,
+			Count:         a.totalCount,
+			Rps:           rps,
+			ThroughputBps: throughputBps,
+			ErrorRate:     errRate,
+		}
+	}
+
+	return services
 }
 
-func (m *Mapper) getSpans(ctx context.Context) ([]OtelTrace, error) {
-	var spans []OtelTrace
-	if err := m.dbConfig.Db.WithContext(ctx).Where(fmt.Sprintf("ResourceAttributes['%s'] = ?", m.dbConfig.SessionKey), m.dbConfig.SessionToken).Find(&spans).Error; err != nil {
-		return nil, errors.Join(errorz.ErrWhileGettingOtelTraces, err)
+func buildEdges(rows []OtelTrace, serviceNameToService map[string]*Service) []Edge {
+	spanByID := make(map[string]OtelTrace, len(rows))
+	for _, r := range rows {
+		spanByID[r.SpanId] = r
 	}
 
-	return spans, nil
-}
-
-func (m *Mapper) getServiceNames(ctx context.Context) ([]string, error) {
-	var names []string
-	query := m.dbConfig.Db.WithContext(ctx).
-		Table(m.dbConfig.TableName).
-		Select("DISTINCT ServiceName").
-		Where(fmt.Sprintf("ResourceAttributes['%s'] = ?", m.dbConfig.SessionKey), m.dbConfig.SessionToken)
-
-	if err := query.Pluck("ServiceName", &names).Error; err != nil {
-		return nil, errors.Join(errorz.ErrWhileGettingOtelTraces, err)
+	oneMinuteAgo := time.Now().Add(-1 * time.Minute)
+	secondsSince := time.Since(oneMinuteAgo).Seconds()
+	if secondsSince <= 0 {
+		secondsSince = 60
 	}
 
-	return names, nil
-}
+	seen := make(map[string]bool)
+	counts := make(map[string]int)
+	var edges []Edge
 
-func (m *Mapper) buildServiceMetrics(ctx context.Context, span OtelTrace) (Service, error) {
-	var traceCount int64
-	err := m.dbConfig.Db.WithContext(ctx).
-		Table(m.dbConfig.TableName).
-		Where("ServiceName = ?", span.ServiceName).
-		Where(fmt.Sprintf("ResourceAttributes['%s'] = ?", m.dbConfig.SessionKey), m.dbConfig.SessionToken).
-		Count(&traceCount).Error
-	if err != nil {
-		return Service{}, errors.Join(errorz.ErrWhileGettingOtelTraceCount, err)
+	for _, child := range rows {
+		if child.ParentSpanId == "" {
+			continue
+		}
+		parent, ok := spanByID[child.ParentSpanId]
+		if !ok {
+			continue
+		}
+		if parent.ServiceName == child.ServiceName {
+			continue
+		}
+
+		source := serviceNameToService[parent.ServiceName]
+		target := serviceNameToService[child.ServiceName]
+		if source == nil || target == nil {
+			continue
+		}
+
+		key := parent.ServiceName + "->" + child.ServiceName
+		if !child.Timestamp.Before(oneMinuteAgo) {
+			counts[key]++
+		}
+		if !seen[key] {
+			seen[key] = true
+			edges = append(edges, Edge{Source: source, Target: target})
+		}
 	}
 
-	var errorCount int64
-	err = m.dbConfig.Db.WithContext(ctx).
-		Table(m.dbConfig.TableName).
-		Where("ServiceName = ?", span.ServiceName).
-		Where(fmt.Sprintf("ResourceAttributes['%s'] = ?", m.dbConfig.SessionKey), m.dbConfig.SessionToken).
-		Where("StatusCode = ?", "Error").
-		Count(&errorCount).Error
-	if err != nil {
-		return Service{}, errors.Join(errorz.ErrWhileGettingOtelTraceErrorRate, err)
+	// Assign RPS to edges
+	for i := range edges {
+		key := edges[i].Source.Name + "->" + edges[i].Target.Name
+		if c, ok := counts[key]; ok && c > 0 {
+			edges[i].Rps = float64(c) / secondsSince
+		} else {
+			edges[i].Rps = 0
+		}
 	}
 
-	var errorRate float64
-	if traceCount > 0 {
-		errorRate = float64(errorCount) / float64(traceCount)
-	} else {
-		errorRate = 0
-	}
-
-	return Service{
-		Name:      span.ServiceName,
-		Count:     int(traceCount),
-		ErrorRate: errorRate,
-	}, nil
+	return edges
 }
