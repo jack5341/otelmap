@@ -19,7 +19,6 @@ services:
     networks:
       - otel-clickhouse
       - web
-
   clickhouse:
     image: clickhouse/clickhouse-server:25.9
     ports:
@@ -36,11 +35,14 @@ services:
         required: true
     networks: 
       - otel-clickhouse
+      - web
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./sql:/docker-entrypoint-initdb.d
   server:
-    image: otelmap.registry.dockreg.com/server:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     networks:
@@ -69,24 +71,6 @@ services:
       - clickhouse
     networks:
       - web
-
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: cloudflared
-    restart: unless-stopped
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
-    networks:
-      - web
-    env_file:
-      - path: ".env.production"
-        required: true
-    depends_on:
-      - nginx
-      - otelcollector
-      - server
-      - clickhouse
-    volumes:
-      - ./cloudflared-config.yml:/etc/cloudflared/config.yml:ro
 
 volumes:
   clickhouse_data:

@@ -3,47 +3,20 @@ package mapmanager
 import (
 	"context"
 	"errors"
-	"math"
-	"sort"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	errorz "github.com/jack5341/otel-map-server/internal/errors"
 	"github.com/jack5341/otel-map-server/internal/models"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
 )
 
-type Position struct {
-	X int `json:"x"`
-	Y int `json:"y"`
-}
-
-type Node struct {
-	Service      string   `json:"service"`
-	RPS          float64  `json:"rps"`
-	LatencyMsAvg int64    `json:"latency_ms_avg"`
-	P50Ms        int64    `json:"p50_ms"`
-	P95Ms        int64    `json:"p95_ms"`
-	P99Ms        int64    `json:"p99_ms"`
-	ErrorRate    float64  `json:"error_rate"`
-	Position     Position `json:"position"`
-}
-
-type Edge struct {
-	Source       string  `json:"source"`
-	Target       string  `json:"target"`
-	Requests     int64   `json:"requests"`
-	LatencyMsAvg int64   `json:"latency_ms_avg"`
-	ErrorRate    float64 `json:"error_rate"`
-}
-
 type MapDTO struct {
-	Global map[string]any `json:"global"`
-	Nodes  []Node         `json:"nodes"`
-	Edges  []Edge         `json:"edges"`
+	RequestFlows  []RequestFlow `json:"request_flows"`
+	Services      []Service     `json:"services"`
+	GlobalMetrics GlobalMetrics `json:"global_metrics"`
 }
 
 type MapManager struct {
@@ -51,16 +24,24 @@ type MapManager struct {
 	otelTracer trace.Tracer
 }
 
-type serviceStats struct {
-	requests    int64
-	latencySum  int64
-	fiveXXCount int64
+type Service struct {
+	Name          string  `json:"name"`
+	Count         int     `json:"count"`
+	Rps           float64 `json:"rps"`
+	ErrorRate     float64 `json:"error_rate"`
+	ThroughputBps float64 `json:"throughput_bps"`
 }
-type edgeKey struct{ src, dst string }
-type edgeStats struct {
-	requests   int64
-	latencySum int64
-	errors     int64
+
+type RequestFlow struct {
+	Service Service       `json:"service"`
+	Childs  []RequestFlow `json:"childs"`
+}
+
+type GlobalMetrics struct {
+	TotalServices int     `json:"total_services"`
+	TotalRequests int     `json:"total_requests"`
+	AvgRps        float64 `json:"avg_rps"`
+	ErrorRate     float64 `json:"error_rate"`
 }
 
 func NewMapManager(db *gorm.DB, otelTracer trace.Tracer) *MapManager {
@@ -71,7 +52,7 @@ func (m *MapManager) Create(token uuid.UUID, start *time.Time, end *time.Time, c
 	ctx, span := m.otelTracer.Start(ctx, "MapManager.Create")
 	defer span.End()
 	var rows []models.OtelTrace
-	query := `SELECT * FROM otel.otel_traces WHERE SpanAttributes['otelmap.session_token'] = ?`
+	query := `SELECT * FROM default.otel_traces WHERE ResourceAttributes['otelmap.session_token'] = ?`
 	args := []interface{}{token.String()}
 
 	if start != nil {
@@ -84,173 +65,178 @@ func (m *MapManager) Create(token uuid.UUID, start *time.Time, end *time.Time, c
 	}
 
 	if err := m.db.WithContext(ctx).Raw(query, args...).Scan(&rows).Error; err != nil {
-		return MapDTO{}, errors.Join(errorz.ErrWhileGettingOtelTraces, err)
+		errWrapped := errors.Join(errorz.ErrWhileGettingOtelTraces, err)
+		span.RecordError(errWrapped)
+		span.SetStatus(codes.Error, errWrapped.Error())
+		return MapDTO{}, errWrapped
 	}
 
-	spanService := make(map[string]string)
-	services := make(map[string]*serviceStats)
-	serviceDurations := make(map[string][]int64)
-	edges := make(map[edgeKey]*edgeStats)
-	var totalRequests int64
-
-	for _, r := range rows {
-		spanService[r.TraceId+"|"+r.SpanId] = r.ServiceName
+	requestFlows := m.buildRequestFlows(rows)
+	globalMetrics, services, err := m.buildGlobalMetricsAndServices(ctx, rows)
+	if err != nil {
+		errWrapped := errors.Join(errorz.ErrWhileBuildingGlobalMetricsAndServices, err)
+		span.RecordError(errWrapped)
+		span.SetStatus(codes.Error, errWrapped.Error())
+		return MapDTO{}, errWrapped
 	}
 
+	return MapDTO{
+		RequestFlows:  requestFlows,
+		Services:      services,
+		GlobalMetrics: globalMetrics,
+	}, nil
+}
+
+func (m *MapManager) buildGlobalMetricsAndServices(ctx context.Context, rows []models.OtelTrace) (GlobalMetrics, []Service, error) {
+	ctx, span := m.otelTracer.Start(ctx, "MapManager.buildGlobalMetricsAndServices")
+	defer span.End()
+
+	var (
+		totalRequests int64
+		totalErrors   int64
+		services      []Service
+	)
+
+	var serviceNames = make(map[string]bool)
 	for _, r := range rows {
-		serviceName := r.ServiceName
-		if serviceName == "" {
+		if _, ok := serviceNames[r.ServiceName]; !ok {
+			var (
+				traceCount int64
+				errorCount int64
+			)
+
+			oneMinuteAgo := time.Now().Add(-1 * time.Minute)
+			err := m.db.WithContext(ctx).
+				Model(&models.OtelTrace{}).
+				Where("ServiceName = ?", r.ServiceName).
+				Where("Timestamp >= ?", oneMinuteAgo).
+				Count(&traceCount).Error
+
+			if err != nil {
+				errWrapped := errors.Join(errorz.ErrWhileGettingOtelTraceCount, err)
+				span.RecordError(errWrapped)
+				span.SetStatus(codes.Error, errWrapped.Error())
+				return GlobalMetrics{}, nil, errWrapped
+			}
+
+			err = m.db.WithContext(ctx).
+				Model(&models.OtelTrace{}).
+				Where("ServiceName = ?", r.ServiceName).
+				Where("StatusCode = ?", "Error").
+				Where("Timestamp >= ?", oneMinuteAgo).
+				Count(&errorCount).Error
+
+			if err != nil {
+				errWrapped := errors.Join(errorz.ErrWhileGettingOtelTraceErrorCount, err)
+				span.RecordError(errWrapped)
+				span.SetStatus(codes.Error, errWrapped.Error())
+				return GlobalMetrics{}, nil, errWrapped
+			}
+
+			throughputBps := float64(traceCount) * float64(r.Duration) / 1000000
+
+			var errorRate float64
+			if traceCount > 0 {
+				errorRate = float64(errorCount) / float64(traceCount)
+			} else {
+				errorRate = 0
+			}
+
+			services = append(services, Service{
+				Name:          r.ServiceName,
+				Count:         int(traceCount),
+				Rps:           float64(traceCount) / time.Since(oneMinuteAgo).Seconds(),
+				ThroughputBps: throughputBps,
+				ErrorRate:     errorRate,
+			})
+
+			serviceNames[r.ServiceName] = true
+		}
+	}
+
+	oneMinuteAgo := time.Now().Add(-1 * time.Minute)
+	err := m.db.WithContext(ctx).
+		Model(&models.OtelTrace{}).
+		Where("Timestamp >= ?", oneMinuteAgo).
+		Count(&totalRequests).Error
+
+	if err != nil {
+		errWrapped := errors.Join(errorz.ErrWhileGettingOtelTraceCount, err)
+		span.RecordError(errWrapped)
+		span.SetStatus(codes.Error, errWrapped.Error())
+		return GlobalMetrics{}, nil, errWrapped
+	}
+
+	err = m.db.WithContext(ctx).
+		Model(&models.OtelTrace{}).
+		Where("StatusCode = ?", "Error").
+		Where("Timestamp >= ?", oneMinuteAgo).
+		Count(&totalErrors).Error
+
+	if err != nil {
+		errWrapped := errors.Join(errorz.ErrWhileGettingOtelTraceErrorCount, err)
+		span.RecordError(errWrapped)
+		span.SetStatus(codes.Error, errWrapped.Error())
+		return GlobalMetrics{}, nil, errWrapped
+	}
+
+	var globalErrorRate float64
+	if totalRequests > 0 {
+		globalErrorRate = float64(totalErrors) / float64(totalRequests)
+	} else {
+		globalErrorRate = 0
+	}
+
+	return GlobalMetrics{
+		TotalServices: len(services),
+		TotalRequests: int(totalRequests),
+		AvgRps:        float64(totalRequests) / time.Since(oneMinuteAgo).Seconds(),
+		ErrorRate:     globalErrorRate,
+	}, services, nil
+}
+
+func (m *MapManager) buildRequestFlows(rows []models.OtelTrace) []RequestFlow {
+	spanIdToRow := make(map[string]models.OtelTrace, len(rows))
+	childrenByParent := make(map[string][]models.OtelTrace, len(rows))
+	for _, r := range rows {
+		spanIdToRow[r.SpanId] = r
+		if r.ParentSpanId != "" {
+			childrenByParent[r.ParentSpanId] = append(childrenByParent[r.ParentSpanId], r)
+		}
+	}
+
+	var roots []models.OtelTrace
+	for _, r := range rows {
+		if r.ParentSpanId == "" {
+			roots = append(roots, r)
 			continue
 		}
+		if _, ok := spanIdToRow[r.ParentSpanId]; !ok {
+			roots = append(roots, r)
+		}
+	}
 
-		spanKindUp := strings.ToUpper(r.SpanKind)
-		isServer := spanKindUp == "SERVER"
-		durationMs := r.Duration / 1_000_000
-
-		statusCodeStr, ok := r.SpanAttributes["http.status_code"]
-		statusCodeInt := 0
-		if ok {
-			if v, err := strconv.Atoi(statusCodeStr); err == nil {
-				statusCodeInt = v
+	var build func(models.OtelTrace) RequestFlow
+	build = func(r models.OtelTrace) RequestFlow {
+		var childFlows []RequestFlow
+		if childs, ok := childrenByParent[r.SpanId]; ok {
+			childFlows = make([]RequestFlow, 0, len(childs))
+			for _, c := range childs {
+				childFlows = append(childFlows, build(c))
 			}
 		}
-		is5xx := statusCodeInt >= 500 && statusCodeInt < 600
-
-		ss, ok2 := services[serviceName]
-		if !ok2 {
-			ss = &serviceStats{}
-			services[serviceName] = ss
-		}
-
-		if isServer {
-			ss.requests++
-			ss.latencySum += durationMs
-			if is5xx {
-				ss.fiveXXCount++
-			}
-			totalRequests++
-			serviceDurations[serviceName] = append(serviceDurations[serviceName], durationMs)
-		}
-
-		if r.ParentSpanId != "" {
-			parentSvc := spanService[r.TraceId+"|"+r.ParentSpanId]
-			if parentSvc != "" && parentSvc != serviceName {
-				key := edgeKey{src: parentSvc, dst: serviceName}
-				es, ok := edges[key]
-				if !ok {
-					es = &edgeStats{}
-					edges[key] = es
-				}
-				if isServer {
-					es.requests++
-					es.latencySum += durationMs
-					if is5xx {
-						es.errors++
-					}
-				}
-			}
+		return RequestFlow{
+			Service: Service{
+				Name: r.ServiceName,
+			},
+			Childs: childFlows,
 		}
 	}
 
-	windowStart := time.Now().UTC()
-	var windowEnd time.Time
-	for _, r := range rows {
-		if r.Timestamp.Before(windowStart) {
-			windowStart = r.Timestamp
-		}
-		if r.Timestamp.After(windowEnd) {
-			windowEnd = r.Timestamp
-		}
-	}
-	if windowEnd.Before(windowStart) {
-		windowEnd = windowStart.Add(time.Second)
-	}
-	windowSeconds := windowEnd.Sub(windowStart).Seconds()
-	if windowSeconds <= 0 {
-		windowSeconds = 1
+	requestFlows := make([]RequestFlow, 0, len(roots))
+	for _, root := range roots {
+		requestFlows = append(requestFlows, build(root))
 	}
 
-	global := map[string]any{
-		"total_services": len(services),
-		"total_requests": totalRequests,
-		"avg_rps":        float64(totalRequests) / windowSeconds,
-		"time_range": map[string]string{
-			"from": windowStart.Format(time.RFC3339),
-			"to":   windowEnd.Format(time.RFC3339),
-		},
-	}
-
-	percentile := func(durs []int64, p float64) int64 {
-		if len(durs) == 0 {
-			return 0
-		}
-		sort.Slice(durs, func(i, j int) bool { return durs[i] < durs[j] })
-		pos := int(math.Ceil(p*float64(len(durs)))) - 1
-		if pos < 0 {
-			pos = 0
-		}
-		if pos >= len(durs) {
-			pos = len(durs) - 1
-		}
-		return durs[pos]
-	}
-
-	nodes := make([]Node, 0, len(services))
-	i := 0
-	for name, stats := range services {
-		avgLatency := int64(0)
-		if stats.requests > 0 {
-			avgLatency = stats.latencySum / stats.requests
-		}
-		p50, p95, p99 := int64(0), int64(0), int64(0)
-		if durs, ok := serviceDurations[name]; ok && len(durs) > 0 {
-
-			cpy := make([]int64, len(durs))
-			copy(cpy, durs)
-			p50 = percentile(cpy, 0.50)
-			copy(cpy, durs)
-			p95 = percentile(cpy, 0.95)
-			copy(cpy, durs)
-			p99 = percentile(cpy, 0.99)
-		}
-		rate5xx := 0.0
-		if stats.requests > 0 {
-			rate5xx = float64(stats.fiveXXCount) / float64(stats.requests)
-		}
-
-		posX := (i%6)*180 + 120
-		posY := (i/6)*170 + 140
-		nodes = append(nodes, Node{
-			Service:      name,
-			RPS:          float64(stats.requests) / windowSeconds,
-			LatencyMsAvg: avgLatency,
-			P50Ms:        p50,
-			P95Ms:        p95,
-			P99Ms:        p99,
-			ErrorRate:    rate5xx,
-			Position:     Position{X: posX, Y: posY},
-		})
-		i++
-	}
-
-	mapEdges := make([]Edge, 0, len(edges))
-	for key, es := range edges {
-		avgLatency := int64(0)
-		if es.requests > 0 {
-			avgLatency = es.latencySum / es.requests
-		}
-		errRate := 0.0
-		if es.requests > 0 {
-			errRate = float64(es.errors) / float64(es.requests)
-		}
-		mapEdges = append(mapEdges, Edge{
-			Source:       key.src,
-			Target:       key.dst,
-			Requests:     es.requests,
-			LatencyMsAvg: avgLatency,
-			ErrorRate:    errRate,
-		})
-	}
-
-	return MapDTO{Global: global, Nodes: nodes, Edges: mapEdges}, nil
+	return requestFlows
 }
