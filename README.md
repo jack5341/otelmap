@@ -20,6 +20,23 @@ OpenTelemetry traces → ClickHouse storage → Service Map API. This project in
 - OpenTelemetry Collector writes to ClickHouse tables
 - Go API reads from ClickHouse and returns a service-map DTO
 
+```mermaid
+flowchart TD
+    %% Nodes
+    A[🌐 Internet] --> B[NGINX]
+
+    %% Tracing Flow
+    B -->|OTLP /v1/tracing| C[OpenTelemetry Collector]
+    C -->|Insert traces| D[(ClickHouse)]
+
+    %% Application Flow
+    B -->|Create token / Get service map| E[Server]
+    E -->|Store / Query data| D
+
+    %% Endpoints
+    D --> F[📊 Persisted Data]
+```
+
 ### Prerequisites
 - Docker and Docker Compose
 

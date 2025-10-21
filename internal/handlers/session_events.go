@@ -101,7 +101,7 @@ func (h *SessionEventsHandler) Listen(c echo.Context) error {
 				if !sentEvent {
 					found, err := hasTraces()
 					if err != nil {
-						fmt.Println("Error checking traces:", err)
+						_ = err // ignore error
 						return nil
 					}
 					if found {
