@@ -16,19 +16,32 @@ type Mapper struct {
 }
 
 const getEdgesQuery = `
-WITH SpansBase AS (
+WITH parameters AS (
+    SELECT
+        ? AS session_token
+),
+Duration AS (
+    SELECT 
+        (toUnixTimestamp(MAX(Timestamp)) - toUnixTimestamp(MIN(Timestamp))) AS window_seconds
+    FROM default.otel_traces, parameters
+    WHERE ResourceAttributes['otelmap.session_token'] = parameters.session_token
+    HAVING window_seconds >= 1
+),
+
+SpansBase AS (
     SELECT
         t.TraceId,
         t.SpanId,
         t.ParentSpanId,
         t.ServiceName AS ServiceName, 
+        
         multiIf(
             has(t.SpanAttributes, 'http.route'),
             t.SpanAttributes['http.method'] || ' ' || t.SpanAttributes['http.route'],
             t.SpanName
         ) AS Path
-    FROM otel_traces AS t
-    WHERE t.ResourceAttributes['otelmap.session_token'] = ?
+    FROM default.otel_traces AS t, parameters
+    WHERE t.ResourceAttributes['otelmap.session_token'] = parameters.session_token
 ),
 
 ServiceNode AS (
@@ -45,7 +58,9 @@ ServiceNode AS (
 SELECT
     p.ServiceName AS source_service_name, 
     c.ServiceName AS target_service_name,
-    c.Path AS target_service_path 
+    c.Path AS target_service_path,
+    COUNT() AS total_requests,
+    ROUND(COUNT() / (SELECT window_seconds FROM Duration), 2) AS requests_per_second
 FROM ServiceNode AS c
 INNER JOIN ServiceNode AS p
     ON c.ParentSpanId = p.SpanId 
@@ -71,11 +86,12 @@ ORDER BY total_requests DESC
 `
 
 type Edge struct {
-	SourceServiceName string `json:"source_service_name"`
-	TargetServiceName string `json:"target_service_name"`
-	TargetServicePath string `json:"target_service_path"`
+	SourceServiceName string  `json:"source_service_name"`
+	TargetServiceName string  `json:"target_service_name"`
+	TargetServicePath string  `json:"target_service_path"`
+	TotalRequests     uint64  `json:"total_requests"`
+	RequestsPerSecond float64 `json:"requests_per_second"`
 }
-
 type Service struct {
 	ServiceName   string  `json:"service_name"`
 	TotalRequests int64   `json:"total_requests"`
