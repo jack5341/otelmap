@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	errorz "github.com/jack5341/otel-map-server/internal/errors"
@@ -42,7 +44,11 @@ func (h *ServiceMapHandler) Get(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": errorz.ErrInvalidSessionToken.Error()})
 	}
 
-	mapper := mapz.NewMapper(h.db, h.otelTracer, ctx)
+	// Add timeout for database operations
+	dbCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	mapper := mapz.NewMapper(h.db, h.otelTracer, dbCtx)
 	services, err := mapper.GetServicesWithMetrics(sessionToken)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})

@@ -9,7 +9,7 @@ type OtelTrace struct {
 	TraceId            string            `gorm:"primaryKey;type:String" json:"trace_id"`
 	SpanId             string            `gorm:"type:String" json:"span_id"`
 	ParentSpanId       string            `gorm:"type:String" json:"parent_span_id"`
-	ServiceName        string            `gorm:"index;type:String" json:"ServiceName"`
+	ServiceName        string            `gorm:"index;type:String" json:"service_name"`
 	SpanName           string            `gorm:"type:String" json:"span_name"`
 	SpanKind           string            `gorm:"type:String" json:"span_kind"`
 	Timestamp          time.Time         `gorm:"type:DateTime" json:"timestamp"`
