@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	errorz "github.com/jack5341/otel-map-server/internal/errors"
-	pkg "github.com/jack5341/otel-map-server/pkg/mapper"
+	mapz "github.com/jack5341/otel-map-server/internal/mapz"
 	"github.com/labstack/echo/v4"
 	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
@@ -18,6 +18,11 @@ type ServiceMapRequest struct {
 type ServiceMapHandler struct {
 	db         *gorm.DB
 	otelTracer trace.Tracer
+}
+
+type ServiceMapResponse struct {
+	Services []mapz.Service `json:"services"`
+	Edges    []mapz.Edge    `json:"edges"`
 }
 
 func NewServiceMapHandler(db *gorm.DB, otelTracer trace.Tracer) *ServiceMapHandler {
@@ -37,12 +42,21 @@ func (h *ServiceMapHandler) Get(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": errorz.ErrInvalidSessionToken.Error()})
 	}
 
-	dbConfig := pkg.DBConfig{Db: h.db, TableName: "default.otel_traces", SessionToken: sessionToken, SessionKey: "otelmap.session_token"}
-	mapper := pkg.NewMapper(dbConfig, h.otelTracer, ctx)
-	serviceMap, err := mapper.Create()
+	mapper := mapz.NewMapper(h.db, h.otelTracer, ctx)
+	services, err := mapper.GetServicesWithMetrics(sessionToken)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, serviceMap)
+	edges, err := mapper.GetEdges(sessionToken)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	serviceMapResponse := ServiceMapResponse{
+		Services: services,
+		Edges:    edges,
+	}
+
+	return c.JSON(http.StatusOK, serviceMapResponse)
 }
