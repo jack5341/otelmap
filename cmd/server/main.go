@@ -88,7 +88,6 @@ func main() {
 		}
 	case err := <-srvErrCh:
 		if err != nil && err != http.ErrServerClosed {
-			// server failed to start or crashed
 			fmt.Fprintln(os.Stderr, errors.Join(errorz.ErrServerError, err))
 			os.Exit(1)
 		}
