@@ -24,6 +24,9 @@ services:
     ports:
       - "9000:9000"
       - "8123:8123"
+    environment:
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=default
     healthcheck:
       test:
         ["CMD", "bash", "-lc", "clickhouse-client --query 'SELECT 1' || exit 1"]
@@ -39,6 +42,7 @@ services:
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./sql:/docker-entrypoint-initdb.d
+      - ./clickhouse.xml:/etc/clickhouse-server/config.d/clickhouse.xml
   server:
     build:
       context: .

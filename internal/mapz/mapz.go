@@ -12,7 +12,6 @@ import (
 type Mapper struct {
 	db         *gorm.DB
 	otelTracer trace.Tracer
-	ctx        context.Context
 }
 
 const getEdgesQuery = `
@@ -102,12 +101,12 @@ type Service struct {
 	LatencyP95Ms  float64 `json:"latency_p95_ms"`
 }
 
-func NewMapper(db *gorm.DB, otelTracer trace.Tracer, ctx context.Context) *Mapper {
-	return &Mapper{db: db, otelTracer: otelTracer, ctx: ctx}
+func NewMapper(db *gorm.DB, otelTracer trace.Tracer) *Mapper {
+	return &Mapper{db: db, otelTracer: otelTracer}
 }
 
-func (m *Mapper) GetEdges(sessionToken string) ([]Edge, error) {
-	ctx, span := m.otelTracer.Start(m.ctx, "Mapper.GetEdges")
+func (m *Mapper) GetEdges(ctx context.Context, sessionToken string) ([]Edge, error) {
+	ctx, span := m.otelTracer.Start(ctx, "Mapper.GetEdges")
 	defer span.End()
 
 	if sessionToken == "" {
@@ -123,8 +122,8 @@ func (m *Mapper) GetEdges(sessionToken string) ([]Edge, error) {
 	return edges, nil
 }
 
-func (m *Mapper) GetServicesWithMetrics(sessionToken string) ([]Service, error) {
-	ctx, span := m.otelTracer.Start(m.ctx, "Mapper.GetServicesWithMetrics")
+func (m *Mapper) GetServicesWithMetrics(ctx context.Context, sessionToken string) ([]Service, error) {
+	ctx, span := m.otelTracer.Start(ctx, "Mapper.GetServicesWithMetrics")
 	defer span.End()
 
 	if sessionToken == "" {
