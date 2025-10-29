@@ -48,13 +48,13 @@ func (h *ServiceMapHandler) Get(c echo.Context) error {
 	dbCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	mapper := mapz.NewMapper(h.db, h.otelTracer, dbCtx)
-	services, err := mapper.GetServicesWithMetrics(sessionToken)
+	mapper := mapz.NewMapper(h.db, h.otelTracer)
+	services, err := mapper.GetServicesWithMetrics(dbCtx, sessionToken)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	edges, err := mapper.GetEdges(sessionToken)
+	edges, err := mapper.GetEdges(dbCtx, sessionToken)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
